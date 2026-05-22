@@ -119,3 +119,36 @@ def test_langchain_callback_sync(temp_eval_dir, mock_langchain_callback):
         assert tokens["prompt_tokens"] == 100
         assert tokens["completion_tokens"] == 50
         assert tokens["total_cost"] == 0.0003
+
+
+def test_system_prompt_override(temp_eval_dir):
+    @capture_eval(dataset_name="sys_override", system_prompt="Test Sync System Prompt")
+    def my_sync_fn(prompt_input):
+        return f"Response to: {prompt_input}"
+
+    res = my_sync_fn("Hello")
+    assert res == "Response to: Hello"
+
+    dataset_file = os.path.join(str(temp_eval_dir), "sys_override.jsonl")
+    with open(dataset_file, "r") as f:
+        record = json.loads(f.readline())
+        assert "system_prompts" in record["metadata"]
+        assert record["metadata"]["system_prompts"] == ["Test Sync System Prompt"]
+
+
+@pytest.mark.asyncio
+async def test_system_prompt_override_async(temp_eval_dir):
+    @capture_eval(dataset_name="sys_override_async", system_prompt="Test Async System Prompt")
+    async def my_async_fn(prompt_input):
+        await asyncio.sleep(0.01)
+        return f"Async response: {prompt_input}"
+
+    res = await my_async_fn("Hello Async")
+    assert res == "Async response: Hello Async"
+
+    dataset_file = os.path.join(str(temp_eval_dir), "sys_override_async.jsonl")
+    with open(dataset_file, "r") as f:
+        record = json.loads(f.readline())
+        assert "system_prompts" in record["metadata"]
+        assert record["metadata"]["system_prompts"] == ["Test Async System Prompt"]
+
