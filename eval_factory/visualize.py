@@ -39,6 +39,8 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Alpine.js CDN -->
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- SheetJS CDN for Excel Generation -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
     <style>
         body {
@@ -90,6 +92,22 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     <p class="text-xs text-slate-400">Interactive Evaluation Suite</p>
                 </div>
             </div>
+
+            <!-- Navigation Tabs -->
+            <div class="flex space-x-1 bg-[#090d16] p-1 rounded-xl border border-[#1f2e4d]">
+                <button @click="activeTab = 'runs'" 
+                        :class="activeTab === 'runs' ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-500/20' : 'text-slate-400 hover:text-white'" 
+                        class="px-4 py-1.5 text-xs rounded-lg flex items-center space-x-2 transition font-outfit">
+                    <i class="fa-solid fa-flask-vial"></i>
+                    <span>Evaluation Runs</span>
+                </button>
+                <button @click="activeTab = 'ground_truth'" 
+                        :class="activeTab === 'ground_truth' ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-500/20' : 'text-slate-400 hover:text-white'" 
+                        class="px-4 py-1.5 text-xs rounded-lg flex items-center space-x-2 transition font-outfit">
+                    <i class="fa-solid fa-file-excel"></i>
+                    <span>Ground Truth Generator</span>
+                </button>
+            </div>
             
             <div class="flex items-center space-x-4">
                 <span class="text-xs text-slate-500">Dataset File:</span>
@@ -97,6 +115,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     <i class="fa-solid fa-file-invoice-dollar"></i>
                     <span>{{DATASET_NAME}}.jsonl</span>
                 </div>
+                <a href="/api/download" download class="text-slate-300 hover:text-white transition px-3 py-1.5 rounded-lg bg-[#131b2e] border border-[#1f2e4d] text-xs font-semibold flex items-center space-x-1.5 font-outfit shadow-md hover:border-slate-500 cursor-pointer">
+                    <i class="fa-solid fa-file-arrow-down text-blue-400"></i>
+                    <span>Export JSONL</span>
+                </a>
                 <button @click="fetchRuns()" class="text-slate-400 hover:text-white transition p-2 rounded-lg bg-[#131b2e] border border-[#1f2e4d]">
                     <i class="fa-solid fa-rotate"></i>
                 </button>
@@ -153,7 +175,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 </div>
 
                 <!-- Main Layout splits List and Inspector -->
-                <div class="flex-1 flex overflow-hidden gap-6">
+                <div x-show="activeTab === 'runs'" class="flex-1 flex overflow-hidden gap-6">
                     
                     <!-- LEFT COLUMN: Runs List -->
                     <div class="w-1/3 flex flex-col glass-card rounded-2xl overflow-hidden border border-[#1f2e4d]">
@@ -453,7 +475,118 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     </div>
 
                 </div>
-            </div>
+
+                <!-- Ground Truth Generator View -->
+                <div x-show="activeTab === 'ground_truth'" class="flex-1 flex flex-col glass-card rounded-2xl overflow-hidden border border-[#1f2e4d] bg-[#131b2e]/20" x-transition>
+                    <!-- Controls Bar -->
+                    <div class="p-5 border-b border-[#1f2e4d] bg-[#0b0f19]/40 flex flex-wrap items-center justify-between gap-4">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 text-lg">
+                                <i class="fa-solid fa-file-excel"></i>
+                            </div>
+                            <div>
+                                <h2 class="text-sm font-bold font-outfit text-white">Ground Truth Labeling Playground</h2>
+                                <p class="text-xs text-slate-400">Compile model inputs & outputs into clean Excel (.xlsx) templates for offline domain expert labeling.</p>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center space-x-4">
+                            <!-- GT Search Query -->
+                            <div class="relative w-64">
+                                <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+                                <input type="text" x-model="gtSearchQuery" placeholder="Search prompts & outputs..." 
+                                       class="w-full bg-[#090d16] border border-[#1f2e4d] rounded-xl pl-9 pr-4 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 transition">
+                            </div>
+
+                            <!-- GT Correctness Filter -->
+                            <div class="flex space-x-1 bg-[#090d16] p-1 rounded-lg border border-[#1f2e4d]">
+                                <button @click="gtStatusFilter = 'all'" :class="gtStatusFilter === 'all' && 'bg-[#1e293b] text-white'" class="px-2.5 py-1 text-[10px] rounded font-medium text-slate-400 hover:text-white transition">All</button>
+                                <button @click="gtStatusFilter = 'correct'" :class="gtStatusFilter === 'correct' && 'bg-emerald-950/80 text-emerald-400 border border-emerald-500/30'" class="px-2.5 py-1 text-[10px] rounded font-medium text-slate-400 hover:text-white transition">Correct</button>
+                                <button @click="gtStatusFilter = 'incorrect'" :class="gtStatusFilter === 'incorrect' && 'bg-rose-950/80 text-rose-400 border border-rose-500/30'" class="px-2.5 py-1 text-[10px] rounded font-medium text-slate-400 hover:text-white transition">Incorrect</button>
+                                <button @click="gtStatusFilter = 'pending'" :class="gtStatusFilter === 'pending' && 'bg-[#1e293b] text-white'" class="px-2.5 py-1 text-[10px] rounded font-medium text-slate-400 hover:text-white transition">Pending</button>
+                            </div>
+
+                            <!-- Export Button -->
+                            <button @click="downloadXLSX()" 
+                                    :disabled="selectedPairKeys.length === 0"
+                                    :class="selectedPairKeys.length > 0 ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold cursor-pointer font-semibold shadow-lg shadow-emerald-500/10' : 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed'"
+                                    class="px-4 py-2 border border-emerald-500/20 rounded-xl text-xs flex items-center space-x-2 transition shadow-md active:scale-[0.98]">
+                                <i class="fa-solid fa-download"></i>
+                                <span x-text="selectedPairKeys.length > 0 ? 'Download Excel (' + selectedPairKeys.length + ')' : 'Select Pairs to Download'"></span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Main Grid / List -->
+                    <div class="flex-1 overflow-y-auto custom-scrollbar bg-[#0b0f19]/20">
+                        <table class="w-full text-left border-collapse table-fixed">
+                            <thead>
+                                <tr class="bg-[#0b0f19]/80 border-b border-[#1f2e4d]/80 text-[10px] font-bold text-slate-400 uppercase tracking-wider font-outfit">
+                                    <th class="py-3.5 px-4 w-12 text-center">
+                                        <input type="checkbox" :checked="isAllPairsSelected()" @change="toggleAllPairs()"
+                                               class="rounded bg-[#090d16] border-[#1f2e4d] text-blue-600 focus:ring-0 cursor-pointer w-4 h-4">
+                                    </th>
+                                    <th class="py-3.5 px-4 w-28">Status</th>
+                                    <th class="py-3.5 px-4 w-1/3">Input Prompt</th>
+                                    <th class="py-3.5 px-4 w-1/3">Model Output</th>
+                                    <th class="py-3.5 px-4 w-1/4">Ground Truth Label</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-if="filteredPairs.length === 0">
+                                    <tr>
+                                        <td colspan="5" class="py-12 text-center text-slate-500">
+                                            <i class="fa-solid fa-inbox text-3xl mb-2 block"></i>
+                                            <p class="text-xs">No matching pairs found in this dataset.</p>
+                                        </td>
+                                    </tr>
+                                </template>
+                                <template x-for="p in filteredPairs" :key="p.key">
+                                    <tr :class="selectedPairKeys.includes(p.key) ? 'bg-blue-950/10 border-blue-900/40' : 'hover:bg-[#131b2e]/30 border-[#1f2e4d]/40'"
+                                        class="border-b transition text-xs">
+                                        <td class="py-3 px-4 text-center">
+                                            <input type="checkbox" :checked="selectedPairKeys.includes(p.key)" @change="togglePair(p.key)"
+                                                   class="rounded bg-[#090d16] border-[#1f2e4d] text-blue-600 focus:ring-0 cursor-pointer w-4 h-4">
+                                        </td>
+                                        <td class="py-3 px-4">
+                                            <!-- Status Badges -->
+                                            <template x-if="p.ev.correct === true">
+                                                <span class="inline-flex items-center px-2 py-0.5 text-[10px] font-semibold rounded bg-emerald-950 text-emerald-400 border border-emerald-500/30">
+                                                    <i class="fa-solid fa-circle-check mr-1 text-[9px]"></i> Correct
+                                                </span>
+                                            </template>
+                                            <template x-if="p.ev.correct === false">
+                                                <span class="inline-flex items-center px-2 py-0.5 text-[10px] font-semibold rounded bg-rose-950 text-rose-400 border border-rose-500/30">
+                                                    <i class="fa-solid fa-circle-xmark mr-1 text-[9px]"></i> Incorrect
+                                                </span>
+                                            </template>
+                                            <template x-if="p.ev.correct === null || p.ev.correct === undefined">
+                                                <span class="inline-flex items-center px-2 py-0.5 text-[10px] font-semibold rounded bg-[#1e293b] text-slate-400 border border-[#1f2e4d]">
+                                                    <i class="fa-solid fa-circle-question mr-1 text-[9px]"></i> Pending
+                                                </span>
+                                            </template>
+                                        </td>
+                                        <td class="py-3 px-4 font-mono text-[11px] text-slate-300 truncate max-w-xs hover:text-white transition" :title="p.input" x-text="p.input"></td>
+                                        <td class="py-3 px-4 font-outfit text-slate-300 truncate max-w-xs hover:text-white transition" :title="p.output" x-text="p.output"></td>
+                                        <td class="py-3 px-4">
+                                            <div class="flex items-center space-x-2">
+                                                <input type="text" x-model="p.ev.ground_truth" @change="saveGTPair(p.run_id, p.item_index, p.ev.correct, p.ev.ground_truth)"
+                                                       placeholder="Enter ground truth..." 
+                                                       class="w-full bg-[#090d16] border border-[#1f2e4d] rounded-lg px-2.5 py-1 text-xs text-white placeholder-slate-700 focus:outline-none focus:border-blue-500 transition font-sans">
+                                                <template x-if="p.ev.ground_truth">
+                                                    <span class="text-emerald-500 text-xs flex-shrink-0" title="Ground Truth Saved">
+                                                        <i class="fa-solid fa-cloud-arrow-up"></i>
+                                                    </span>
+                                                </template>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                         </table>
+                     </div>
+                 </div>
+             </div>
             
         </div>
     </div>
@@ -469,6 +602,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 statusFilter: 'all',
                 selectedRun: null,
                 savingReviewIndex: null,
+                
+                // Ground Truth Tab State
+                activeTab: 'runs',
+                gtSearchQuery: '',
+                gtStatusFilter: 'all',
+                selectedPairKeys: [],
 
                 init() {
                     this.fetchRuns();
@@ -545,6 +684,135 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     } finally {
                         this.savingReviewIndex = null;
                     }
+                },
+
+                async saveGTPair(runId, index, correct, groundTruth) {
+                    try {
+                        const res = await fetch('/api/review', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            run_id: runId,
+                            item_index: index,
+                            correct: correct,
+                            ground_truth: groundTruth
+                          })
+                        });
+                        if (!res.ok) throw new Error('Failed to save ground truth');
+                    } catch (err) {
+                        alert("Error saving ground truth: " + err.message);
+                    }
+                },
+
+                togglePair(key) {
+                    if (this.selectedPairKeys.includes(key)) {
+                        this.selectedPairKeys = this.selectedPairKeys.filter(k => k !== key);
+                    } else {
+                        this.selectedPairKeys.push(key);
+                    }
+                },
+
+                toggleAllPairs() {
+                    const visibleKeys = this.filteredPairs.map(p => p.key);
+                    const allSelected = visibleKeys.every(k => this.selectedPairKeys.includes(k));
+                    if (allSelected) {
+                        this.selectedPairKeys = this.selectedPairKeys.filter(k => !visibleKeys.includes(k));
+                    } else {
+                        visibleKeys.forEach(k => {
+                            if (!this.selectedPairKeys.includes(k)) {
+                                this.selectedPairKeys.push(k);
+                            }
+                        });
+                    }
+                },
+
+                isAllPairsSelected() {
+                    const visibleKeys = this.filteredPairs.map(p => p.key);
+                    if (visibleKeys.length === 0) return false;
+                    return visibleKeys.every(k => this.selectedPairKeys.includes(k));
+                },
+
+                downloadXLSX() {
+                    const selectedPairs = this.allPairs.filter(p => this.selectedPairKeys.includes(p.key));
+                    if (selectedPairs.length === 0) {
+                        alert("Please select at least one pair to download.");
+                        return;
+                    }
+                    
+                    const excelData = selectedPairs.map(p => {
+                        let gtVal = '';
+                        if (p.ev.correct === true) {
+                            // If correct, ground truth defaults to the model output (or custom ground truth if entered)
+                            gtVal = p.ev.ground_truth || p.output;
+                        } else {
+                            // If not correct, use the manual ground-truth label (or blank)
+                            gtVal = p.ev.ground_truth || '';
+                        }
+                        return {
+                            "Input": p.input,
+                            "Model Output": p.output,
+                            "Ground Truth": gtVal
+                        };
+                    });
+                    
+                    const ws = XLSX.utils.json_to_sheet(excelData);
+                    
+                    // Set friendly column widths to prevent truncation and make it easy to read
+                    ws['!cols'] = [
+                        { wch: 60 },
+                        { wch: 60 },
+                        { wch: 60 }
+                    ];
+                    
+                    const wb = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(wb, ws, "Ground Truth Template");
+                    
+                    const datasetName = "{{DATASET_NAME}}";
+                    XLSX.writeFile(wb, `${datasetName}_ground_truth_template.xlsx`);
+                },
+
+                get allPairs() {
+                    const pairs = [];
+                    this.runs.forEach(run => {
+                        const isBatch = this.isBatchRun(run);
+                        const evals = Array.isArray(run.evaluation) ? run.evaluation : [run.evaluation || {}];
+                        const numItems = isBatch ? run.inputs.length : 1;
+                        
+                        for (let i = 0; i < numItems; i++) {
+                            const inp = isBatch ? run.inputs[i] : run.inputs;
+                            const outp = isBatch ? run.outputs[i] : run.outputs;
+                            const ev = evals[i] || { correct: null, ground_truth: '' };
+                            
+                            pairs.push({
+                                run_id: run.run_id,
+                                item_index: i,
+                                timestamp: run.timestamp,
+                                input: this.getCleanText(inp),
+                                output: this.getCleanText(outp),
+                                ev: ev,
+                                key: `${run.run_id}_${i}`
+                            });
+                        }
+                    });
+                    return pairs;
+                },
+
+                get filteredPairs() {
+                    const query = this.gtSearchQuery.toLowerCase();
+                    return this.allPairs.filter(p => {
+                        const matchSearch = p.input.toLowerCase().includes(query) || 
+                                             p.output.toLowerCase().includes(query) || 
+                                             (p.ev.ground_truth || '').toLowerCase().includes(query);
+                        let matchStatus = true;
+                        if (this.gtStatusFilter === 'correct') {
+                            matchStatus = p.ev.correct === true;
+                        } else if (this.gtStatusFilter === 'incorrect') {
+                            matchStatus = p.ev.correct === false;
+                        } else if (this.gtStatusFilter === 'pending') {
+                            matchStatus = p.ev.correct === null || p.ev.correct === undefined;
+                        }
+                        return matchSearch && matchStatus;
+                    });
                 },
 
                 // Helper to summarize inputs cleanly for the sidebar list
@@ -812,6 +1080,21 @@ class VisualizerHTTPHandler(BaseHTTPRequestHandler):
             # Sort runs by timestamp descending (most recent first)
             runs.reverse()
             self.wfile.write(json.dumps(runs, cls=RobustEncoder).encode("utf-8"))
+        elif self.path == "/api/download":
+            file_path = self.server.dataset_file
+            if os.path.exists(file_path):
+                self.send_response(200)
+                self.send_header("Content-type", "application/x-jsonlines; charset=utf-8")
+                self.send_header("Content-Disposition", f"attachment; filename={self.server.dataset_name}.jsonl")
+                self.end_headers()
+                try:
+                    with open(file_path, "rb") as f:
+                        self.wfile.write(f.read())
+                except Exception as e:
+                    self.wfile.write(str(e).encode("utf-8"))
+            else:
+                self.send_response(404)
+                self.end_headers()
         else:
             self.send_response(404)
             self.end_headers()
@@ -859,13 +1142,14 @@ def find_free_port() -> int:
     return port
 
 
-def start_visualizer(dataset_name: str, port: int = 0, base_dir: str = None):
+def start_visualizer(dataset_name: str, port: int = 0, host: str = "127.0.0.1", base_dir: str = None):
     """
     Spins up the zero-dependency local dashboard server and opens the default browser.
 
     Args:
         dataset_name: Name of the dataset file (without .jsonl).
         port: Specific port to bind to. If 0, searches for an open port.
+        host: Host interface to bind to (default: '127.0.0.1'). Use '0.0.0.0' for LAN access.
         base_dir: Optional directory override where datasets live.
     """
     target_dir = base_dir or config.base_dir
@@ -875,7 +1159,7 @@ def start_visualizer(dataset_name: str, port: int = 0, base_dir: str = None):
     if not port:
         port = find_free_port()
 
-    server_address = ('127.0.0.1', port)
+    server_address = (host, port)
     httpd = HTTPServer(server_address, VisualizerHTTPHandler)
     
     # Store parameters in server context for request handler access
@@ -883,7 +1167,8 @@ def start_visualizer(dataset_name: str, port: int = 0, base_dir: str = None):
     httpd.dataset_file = dataset_file
     httpd.base_dir = target_dir
 
-    url = f"http://localhost:{port}/"
+    display_host = "localhost" if host == "127.0.0.1" else host
+    url = f"http://{display_host}:{port}/"
     print("=" * 60)
     print(f"🚀 eval-factory visualization server starting!")
     print(f"   Dataset:  {dataset_name} ({dataset_file})")
@@ -891,11 +1176,11 @@ def start_visualizer(dataset_name: str, port: int = 0, base_dir: str = None):
     print("=" * 60)
     print("Press Ctrl+C to terminate the visualizer...")
 
-    # Automatically open standard browser after a tiny sleep in thread
-    def open_browser():
-        webbrowser.open(url)
-    
-    threading.Timer(0.8, open_browser).start()
+    # Automatically open standard browser after a tiny sleep in thread (only for local loopback)
+    if host == "127.0.0.1":
+        def open_browser():
+            webbrowser.open(url)
+        threading.Timer(0.8, open_browser).start()
 
     try:
         httpd.serve_forever()
@@ -905,12 +1190,16 @@ def start_visualizer(dataset_name: str, port: int = 0, base_dir: str = None):
         sys.exit(0)
 
 
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python -m eval_factory.visualize <dataset_path_or_name>")
-        sys.exit(1)
+def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Start the eval-factory visualization dashboard.")
+    parser.add_argument("dataset", help="Name or path of the dataset .jsonl file")
+    parser.add_argument("--host", default="127.0.0.1", help="Host interface to bind to (default: 127.0.0.1). Use 0.0.0.0 for LAN access.")
+    parser.add_argument("--port", type=int, default=0, help="Port to bind to (default: random open port)")
     
-    dataset_path = sys.argv[1]
+    args = parser.parse_args()
+    
+    dataset_path = args.dataset
     
     # Handle files passed with extension
     if dataset_path.endswith(".jsonl"):
@@ -925,5 +1214,9 @@ if __name__ == "__main__":
         base_dir = None
     
     # Run server
-    start_visualizer(dataset_name, base_dir=base_dir)
+    start_visualizer(dataset_name, port=args.port, host=args.host, base_dir=base_dir)
+
+
+if __name__ == "__main__":
+    main()
 

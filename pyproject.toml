@@ -27,6 +27,9 @@ langchain = [
     "langchain-openai",
 ]
 
+[project.scripts]
+eval-factory = "eval_factory.visualize:main"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["eval_factory*"]
