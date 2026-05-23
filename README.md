@@ -49,6 +49,12 @@ Review evaluations, compare system prompts, grade correctness, and type expected
 eval-factory capitals
 ```
 
+#### 📊 Dashboard Visualizer Overview
+
+| 🧪 Tab 1: Evaluation Runs | 📝 Tab 2: Ground Truth Generator |
+| :---: | :---: |
+| ![Evaluation Runs Tab](images/tab1.png) | ![Ground Truth Generator Tab](images/tab2.png) |
+
 ---
 
 ## ✨ Features
