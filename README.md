@@ -36,7 +36,6 @@ chain = prompt | llm
 
 @capture_eval(dataset_name="capitals")
 def run_llm_chain(countries):
-    # Seamlessly records inputs, batched outputs, costs, and traces!
     return chain.batch([{"country": c} for c in countries])
 
 run_llm_chain(["France", "Germany"])
