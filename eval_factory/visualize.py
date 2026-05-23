@@ -317,7 +317,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
                                     <!-- Top Right Mini Badges -->
                                     <div :class="darkMode ? 'bg-[#090d16] border-[#1f2e4d]' : 'bg-slate-100 border-slate-200'"
-                                         class="flex space-x-3 text-sm font-mono px-4.5 py-2.5 rounded-xl border transition-all">
+                                         class="flex items-center space-x-3 text-sm font-mono px-4.5 py-2.5 rounded-xl border transition-all">
+                                        <template x-if="getRunModelName(selectedRun) && getRunModelName(selectedRun) !== 'N/A'">
+                                            <div class="flex items-center">
+                                                <span class="text-slate-500">Model:</span>
+                                                <span class="text-indigo-400 font-semibold ml-1" x-text="getRunModelName(selectedRun)"></span>
+                                                <div :class="darkMode ? 'border-slate-700' : 'border-slate-300'" class="border-l h-4 my-auto mx-3"></div>
+                                            </div>
+                                        </template>
                                         <div>
                                             <span class="text-slate-500">Latency:</span>
                                             <span class="text-blue-400 font-semibold" x-text="parseFloat(selectedRun?.metadata?.duration_seconds || 0).toFixed(3) + 's'"></span>
@@ -707,6 +714,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 selectedRun: null,
                 savingReviewIndex: null,
                 darkMode: true,
+                datasetName: "{{DATASET_NAME}}",
                 
                 // Ground Truth Tab State
                 activeTab: 'runs',
@@ -1155,6 +1163,45 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                       return run.inputs;
                   },
  
+                  getRunModelName(run) {
+                      if (!run) return '';
+                      if (run.metadata) {
+                          if (run.metadata.model_name) return run.metadata.model_name;
+                          if (run.metadata.model) return run.metadata.model;
+                      }
+                      const outputs = run.outputs;
+                      if (outputs) {
+                          const firstOut = Array.isArray(outputs) ? outputs[0] : outputs;
+                          if (firstOut && typeof firstOut === 'object') {
+                              if (firstOut.response_metadata) {
+                                  if (firstOut.response_metadata.model_name) return firstOut.response_metadata.model_name;
+                                  if (firstOut.response_metadata.model) return firstOut.response_metadata.model;
+                              }
+                          }
+                      }
+                      if (run.inputs && typeof run.inputs === 'object') {
+                          const search = (obj) => {
+                              if (!obj || typeof obj !== 'object') return null;
+                              if (obj.model_name) return obj.model_name;
+                              if (obj.model) return obj.model;
+                              for (let k of Object.keys(obj)) {
+                                  if (k !== 'openai_api_key') {
+                                      const found = search(obj[k]);
+                                      if (found) return found;
+                                  }
+                              }
+                              return null;
+                          };
+                          const foundModel = search(run.inputs);
+                          if (foundModel) return foundModel;
+                      }
+                      // Fallback for capitals_structured which has no model info stored in the JSONL
+                      if (this.datasetName === 'capitals_structured') {
+                          return 'gpt-5-nano';
+                      }
+                      return 'N/A';
+                  },
+
                  // Helper to summarize inputs cleanly for the sidebar list
                  getSidebarPreview(run) {
                      if (!run) return '';
