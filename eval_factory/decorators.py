@@ -163,7 +163,6 @@ def capture_eval(
     out_ext = output_extractor or _default_output_extractor
 
     def decorator(func):
-        # Asynchronous function wrapper
         if inspect.iscoroutinefunction(func):
             @wraps(func)
             async def async_wrapper(*args, **kwargs):
@@ -173,14 +172,11 @@ def capture_eval(
                 except Exception as e:
                     inputs = f"<Input extraction failed: {str(e)}>"
 
-                # Setup tracking context managers
                 start_time = time.perf_counter()
-                
-                # Active context managers
+
                 cb_data = None
                 prompts_data = None
-                
-                # 1. Both get_openai_callback and collect_runs are available
+
                 if get_openai_callback is not None and collect_runs is not None:
                     with get_openai_callback() as cb, collect_runs() as runs_cb:
                         result = await func(*args, **kwargs)
@@ -192,8 +188,7 @@ def capture_eval(
                             "total_cost": cb.total_cost,
                         }
                         prompts_data = _extract_prompts_from_trace(runs_cb.traced_runs)
-                
-                # 2. Only get_openai_callback is available
+
                 elif get_openai_callback is not None:
                     with get_openai_callback() as cb:
                         result = await func(*args, **kwargs)
@@ -204,30 +199,25 @@ def capture_eval(
                             "completion_tokens": cb.completion_tokens,
                             "total_cost": cb.total_cost,
                         }
-                
-                # 3. Only collect_runs is available
+
                 elif collect_runs is not None:
                     with collect_runs() as runs_cb:
                         result = await func(*args, **kwargs)
                         duration = time.perf_counter() - start_time
                         prompts_data = _extract_prompts_from_trace(runs_cb.traced_runs)
-                
-                # 4. Neither is available
+
                 else:
                     result = await func(*args, **kwargs)
                     duration = time.perf_counter() - start_time
 
-                # Capture outputs
                 try:
                     outputs = out_ext(result)
                 except Exception as e:
                     outputs = f"<Output extraction failed: {str(e)}>"
 
-                # Determine if inputs/outputs represent a batch execution of identical length
                 is_batch = isinstance(inputs, list) and isinstance(outputs, list) and len(inputs) == len(outputs)
                 num_items = len(inputs) if is_batch else 1
 
-                # Construct record
                 run_data = {
                     "run_id": str(uuid.uuid4()),
                     "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -238,12 +228,10 @@ def capture_eval(
                     },
                     "evaluation": [{"correct": None, "ground_truth": None} for _ in range(num_items)]
                 }
-                
-                # Append callback tokens if captured
+
                 if cb_data:
                     run_data["metadata"]["tokens"] = cb_data
-                
-                # Append system prompts (supporting trace and manual override)
+
                 system_prompts_list = []
                 if prompts_data and prompts_data["system_prompts"]:
                     system_prompts_list.extend(prompts_data["system_prompts"])
@@ -253,7 +241,6 @@ def capture_eval(
                 if system_prompts_list:
                     run_data["metadata"]["system_prompts"] = system_prompts_list
 
-                # Append user prompts if captured
                 if prompts_data and prompts_data["user_prompts"]:
                     run_data["metadata"]["user_prompts"] = prompts_data["user_prompts"]
 
@@ -262,11 +249,9 @@ def capture_eval(
 
             return async_wrapper
 
-        # Synchronous function wrapper
         else:
             @wraps(func)
             def sync_wrapper(*args, **kwargs):
-                # Capture inputs before execution
                 try:
                     inputs = inp_ext(args, kwargs)
                 except Exception as e:
@@ -276,7 +261,6 @@ def capture_eval(
                 cb_data = None
                 prompts_data = None
 
-                # 1. Both managers available
                 if get_openai_callback is not None and collect_runs is not None:
                     with get_openai_callback() as cb, collect_runs() as runs_cb:
                         result = func(*args, **kwargs)
@@ -289,7 +273,6 @@ def capture_eval(
                         }
                         prompts_data = _extract_prompts_from_trace(runs_cb.traced_runs)
 
-                # 2. Only get_openai_callback available
                 elif get_openai_callback is not None:
                     with get_openai_callback() as cb:
                         result = func(*args, **kwargs)
@@ -301,29 +284,24 @@ def capture_eval(
                             "total_cost": cb.total_cost,
                         }
 
-                # 3. Only collect_runs available
                 elif collect_runs is not None:
                     with collect_runs() as runs_cb:
                         result = func(*args, **kwargs)
                         duration = time.perf_counter() - start_time
                         prompts_data = _extract_prompts_from_trace(runs_cb.traced_runs)
 
-                # 4. Neither available
                 else:
                     result = func(*args, **kwargs)
                     duration = time.perf_counter() - start_time
 
-                # Capture outputs
                 try:
                     outputs = out_ext(result)
                 except Exception as e:
                     outputs = f"<Output extraction failed: {str(e)}>"
 
-                # Determine if inputs/outputs represent a batch execution of identical length
                 is_batch = isinstance(inputs, list) and isinstance(outputs, list) and len(inputs) == len(outputs)
                 num_items = len(inputs) if is_batch else 1
 
-                # Construct record
                 run_data = {
                     "run_id": str(uuid.uuid4()),
                     "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -337,8 +315,7 @@ def capture_eval(
 
                 if cb_data:
                     run_data["metadata"]["tokens"] = cb_data
-                
-                # Append system prompts (supporting trace and manual override)
+
                 system_prompts_list = []
                 if prompts_data and prompts_data["system_prompts"]:
                     system_prompts_list.extend(prompts_data["system_prompts"])
@@ -348,7 +325,6 @@ def capture_eval(
                 if system_prompts_list:
                     run_data["metadata"]["system_prompts"] = system_prompts_list
 
-                # Append user prompts if captured
                 if prompts_data and prompts_data["user_prompts"]:
                     run_data["metadata"]["user_prompts"] = prompts_data["user_prompts"]
 
