@@ -317,7 +317,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
                                     <!-- Top Right Mini Badges -->
                                     <div :class="darkMode ? 'bg-[#090d16] border-[#1f2e4d]' : 'bg-slate-100 border-slate-200'"
-                                         class="flex space-x-3 text-sm font-mono px-4.5 py-2.5 rounded-xl border transition-all">
+                                         class="flex items-center space-x-3 text-sm font-mono px-4.5 py-2.5 rounded-xl border transition-all">
+                                        <template x-if="getRunModelName(selectedRun) && getRunModelName(selectedRun) !== 'N/A'">
+                                            <div class="flex items-center">
+                                                <span class="text-slate-500">Model:</span>
+                                                <span class="text-indigo-400 font-semibold ml-1" x-text="getRunModelName(selectedRun)"></span>
+                                                <div :class="darkMode ? 'border-slate-700' : 'border-slate-300'" class="border-l h-4 my-auto mx-3"></div>
+                                            </div>
+                                        </template>
                                         <div>
                                             <span class="text-slate-500">Latency:</span>
                                             <span class="text-blue-400 font-semibold" x-text="parseFloat(selectedRun?.metadata?.duration_seconds || 0).toFixed(3) + 's'"></span>
@@ -401,7 +408,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                                                 <span class="text-sm font-bold text-slate-400 uppercase tracking-wider">Input Prompt</span>
                                                 <div :class="darkMode ? 'bg-[#0b0f19]/60 border-[#1f2e4d]/60 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'"
                                                      class="rounded-xl p-3.5 text-[17px] leading-relaxed font-medium whitespace-pre-wrap select-all border"
-                                                     x-text="getCleanText(isBatchRun(selectedRun) ? selectedRun.inputs[index] : selectedRun.inputs)">
+                                                     x-text="getCleanText(getPairInput(selectedRun, index))">
                                                 </div>
                                             </div>
 
@@ -529,7 +536,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                                                         <label class="text-xs font-bold text-slate-400 uppercase tracking-wider">Raw Input JSON</label>
                                                         <pre :class="darkMode ? 'bg-[#090d16] border-[#1f2e4d] text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-600'"
                                                              class="h-48 overflow-y-auto custom-scrollbar border rounded-xl p-3 font-mono text-xs whitespace-pre-wrap text-left select-all" 
-                                                             x-text="formatPrettyJSON(isBatchRun(selectedRun) ? selectedRun.inputs[index] : selectedRun.inputs)"></pre>
+                                                             x-text="formatPrettyJSON(getPairInput(selectedRun, index))"></pre>
                                                     </div>
                                                     <div class="space-y-1.5 text-left">
                                                         <label class="text-xs font-bold text-slate-400 uppercase tracking-wider">Raw Output JSON</label>
@@ -707,6 +714,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 selectedRun: null,
                 savingReviewIndex: null,
                 darkMode: true,
+                datasetName: "{{DATASET_NAME}}",
                 
                 // Ground Truth Tab State
                 activeTab: 'runs',
@@ -757,8 +765,63 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         this.runs = rawRuns.map(run => {
                             const inputs = run.inputs;
                             const outputs = run.outputs;
-                            const isBatch = Array.isArray(inputs) && Array.isArray(outputs) && inputs.length === outputs.length;
-                            const numItems = isBatch ? inputs.length : 1;
+                            const numItems = this.getRunBatchSize(run);
+                            
+                            // Dynamic Token & Cost Estimation if missing or zero (e.g. style_guide_checks)
+                            if (!run.metadata) {
+                                run.metadata = {};
+                            }
+                            if (!run.metadata.tokens || !run.metadata.tokens.total_tokens || run.metadata.tokens.total_tokens === 0) {
+                                let systemPromptText = '';
+                                if (run.metadata.system_prompts) {
+                                    if (Array.isArray(run.metadata.system_prompts)) {
+                                        systemPromptText = run.metadata.system_prompts.map(p => typeof p === 'string' ? p : JSON.stringify(p)).join('\\\\n');
+                                    } else {
+                                        systemPromptText = typeof run.metadata.system_prompts === 'string' ? run.metadata.system_prompts : JSON.stringify(run.metadata.system_prompts);
+                                    }
+                                }
+                                
+                                let userPromptText = '';
+                                if (run.metadata.user_prompts) {
+                                    if (Array.isArray(run.metadata.user_prompts)) {
+                                        userPromptText = run.metadata.user_prompts.map(p => typeof p === 'string' ? p : JSON.stringify(p)).join('\\\\n');
+                                    } else {
+                                        userPromptText = typeof run.metadata.user_prompts === 'string' ? run.metadata.user_prompts : JSON.stringify(run.metadata.user_prompts);
+                                    }
+                                } else {
+                                    if (Array.isArray(run.inputs)) {
+                                        userPromptText = run.inputs.map(inp => typeof inp === 'string' ? inp : JSON.stringify(inp)).join('\\\\n');
+                                    } else {
+                                        userPromptText = typeof run.inputs === 'string' ? run.inputs : JSON.stringify(run.inputs);
+                                    }
+                                }
+                                
+                                let outputText = '';
+                                if (run.outputs) {
+                                    if (Array.isArray(run.outputs)) {
+                                        outputText = run.outputs.map(out => typeof out === 'string' ? out : JSON.stringify(out)).join('\\\\n');
+                                    } else {
+                                        outputText = typeof run.outputs === 'string' ? run.outputs : JSON.stringify(run.outputs);
+                                    }
+                                }
+                                
+                                const inputChars = systemPromptText.length + userPromptText.length;
+                                const outputChars = outputText.length;
+                                
+                                const promptTokens = Math.ceil(inputChars / 4) || 0;
+                                const completionTokens = Math.ceil(outputChars / 4) || 0;
+                                const totalTokens = promptTokens + completionTokens;
+                                
+                                // Estimated Rate: $1.50 / 1M prompt tokens, $5.00 / 1M completion tokens
+                                const totalCost = (promptTokens * 0.0000015) + (completionTokens * 0.000005);
+                                
+                                run.metadata.tokens = {
+                                    total_tokens: totalTokens,
+                                    prompt_tokens: promptTokens,
+                                    completion_tokens: completionTokens,
+                                    total_cost: totalCost
+                                };
+                            }
                             
                             let evals = run.evaluation;
                             if (!Array.isArray(evals)) {
@@ -767,7 +830,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                             
                             const normalizedEvals = [];
                             for (let i = 0; i < numItems; i++) {
-                                const outp = isBatch ? outputs[i] : outputs;
+                                const outp = Array.isArray(outputs) ? outputs[i] : outputs;
                                 const fields = this.getOutputStructuredFields(outp);
                                 
                                 let gt = '';
@@ -984,93 +1047,181 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     XLSX.writeFile(wb, `${datasetName}_ground_truth_template.xlsx`);
                 },
 
-                get allPairs() {
-                    const pairs = [];
-                    this.runs.forEach(run => {
-                        const isBatch = this.isBatchRun(run);
-                        const evals = Array.isArray(run.evaluation) ? run.evaluation : [run.evaluation || {}];
-                        const numItems = isBatch ? run.inputs.length : 1;
-                        
-                        for (let i = 0; i < numItems; i++) {
-                            const inp = isBatch ? run.inputs[i] : run.inputs;
-                            const outp = isBatch ? run.outputs[i] : run.outputs;
-                            const ev = evals[i] || { correct: null, ground_truth: '' };
-                            
-                            pairs.push({
-                                run_id: run.run_id,
-                                item_index: i,
-                                timestamp: run.timestamp,
-                                input: this.getCleanText(inp),
-                                output: this.getCleanText(outp),
-                                rawOutput: outp,
-                                ev: ev,
-                                key: `${run.run_id}_${i}`
-                            });
-                        }
-                    });
-                    return pairs;
-                },
+                 get allPairs() {
+                     const pairs = [];
+                     this.runs.forEach(run => {
+                         const numItems = this.getRunBatchSize(run);
+                         const evals = Array.isArray(run.evaluation) ? run.evaluation : [run.evaluation || {}];
+                         
+                         for (let i = 0; i < numItems; i++) {
+                             const inp = this.getPairInput(run, i);
+                             const outp = Array.isArray(run.outputs) ? run.outputs[i] : run.outputs;
+                             const ev = evals[i] || { correct: null, ground_truth: '' };
+                             
+                             pairs.push({
+                                 run_id: run.run_id,
+                                 item_index: i,
+                                 timestamp: run.timestamp,
+                                 input: this.getCleanText(inp),
+                                 output: this.getCleanText(outp),
+                                 rawOutput: outp,
+                                 ev: ev,
+                                 key: `${run.run_id}_${i}`
+                             });
+                         }
+                     });
+                     return pairs;
+                 },
+ 
+                 get filteredPairs() {
+                     const query = this.gtSearchQuery.toLowerCase();
+                     return this.allPairs.filter(p => {
+                         let gtSearchStr = '';
+                         if (p.ev.ground_truth) {
+                             if (typeof p.ev.ground_truth === 'object') {
+                                 gtSearchStr = Object.values(p.ev.ground_truth).join(' ');
+                             } else {
+                                 gtSearchStr = String(p.ev.ground_truth);
+                             }
+                         }
+                         const matchSearch = p.input.toLowerCase().includes(query) || 
+                                              p.output.toLowerCase().includes(query) || 
+                                              gtSearchStr.toLowerCase().includes(query);
+                         let matchStatus = true;
+                         if (this.gtStatusFilter === 'correct') {
+                             matchStatus = p.ev.correct === true;
+                         } else if (this.gtStatusFilter === 'incorrect') {
+                             matchStatus = p.ev.correct === false;
+                         } else if (this.gtStatusFilter === 'pending') {
+                             matchStatus = p.ev.correct === null || p.ev.correct === undefined;
+                         }
+                         return matchSearch && matchStatus;
+                     });
+                 },
+ 
+                 getSystemPromptsText() {
+                     if (!this.selectedRun || !this.selectedRun.metadata) return '';
+                     const prompts = this.selectedRun.metadata.system_prompts;
+                     if (!prompts) return '';
+                     if (Array.isArray(prompts)) {
+                         return prompts.map(p => typeof p === 'string' ? p : JSON.stringify(p)).join('\\\\n\\\\n');
+                     }
+                     if (typeof prompts === 'string') {
+                         return prompts;
+                     }
+                     return JSON.stringify(prompts);
+                 },
+ 
+                 getRunBatchSize(run) {
+                     if (!run) return 0;
+                     if (Array.isArray(run.outputs)) return run.outputs.length;
+                     if (Array.isArray(run.inputs)) return run.inputs.length;
+                     return 1;
+                 },
+ 
+                  getPairInput(run, index) {
+                      if (!run) return '';
+                      const batchSize = this.getRunBatchSize(run);
+                      if (run.metadata && Array.isArray(run.metadata.user_prompts)) {
+                          const prompts = run.metadata.user_prompts;
+                          if (prompts.length === batchSize) {
+                              return prompts[index];
+                          }
+                          // Try consecutive deduplication after stripping whitespace
+                          const deduped = [];
+                          for (let i = 0; i < prompts.length; i++) {
+                              const p = prompts[i];
+                              if (typeof p === 'string') {
+                                  const pStripped = p.trim();
+                                  if (deduped.length === 0 || deduped[deduped.length - 1].trim() !== pStripped) {
+                                      deduped.push(p);
+                                  }
+                              } else {
+                                  deduped.push(p);
+                              }
+                          }
+                          if (deduped.length === batchSize) {
+                              return deduped[index];
+                          }
+                      }
+                      if (Array.isArray(run.inputs) && run.inputs.length === batchSize) {
+                          return run.inputs[index];
+                      }
+                      if (run.inputs && typeof run.inputs === 'object') {
+                          if (run.inputs.chain && typeof run.inputs.chain === 'object') {
+                              const arrayKey = Object.keys(run.inputs).find(k => k !== 'chain' && Array.isArray(run.inputs[k]) && run.inputs[k].length === batchSize);
+                              if (arrayKey) {
+                                  return run.inputs[arrayKey][index];
+                              }
+                          } else {
+                              const arrayKey = Object.keys(run.inputs).find(k => Array.isArray(run.inputs[k]) && run.inputs[k].length === batchSize);
+                              if (arrayKey) {
+                                  return run.inputs[arrayKey][index];
+                              }
+                          }
+                      }
+                      return run.inputs;
+                  },
+ 
+                  getRunModelName(run) {
+                      if (!run) return '';
+                      if (run.metadata) {
+                          if (run.metadata.model_name) return run.metadata.model_name;
+                          if (run.metadata.model) return run.metadata.model;
+                      }
+                      const outputs = run.outputs;
+                      if (outputs) {
+                          const firstOut = Array.isArray(outputs) ? outputs[0] : outputs;
+                          if (firstOut && typeof firstOut === 'object') {
+                              if (firstOut.response_metadata) {
+                                  if (firstOut.response_metadata.model_name) return firstOut.response_metadata.model_name;
+                                  if (firstOut.response_metadata.model) return firstOut.response_metadata.model;
+                              }
+                          }
+                      }
+                      if (run.inputs && typeof run.inputs === 'object') {
+                          const search = (obj) => {
+                              if (!obj || typeof obj !== 'object') return null;
+                              if (obj.model_name) return obj.model_name;
+                              if (obj.model) return obj.model;
+                              for (let k of Object.keys(obj)) {
+                                  if (k !== 'openai_api_key') {
+                                      const found = search(obj[k]);
+                                      if (found) return found;
+                                  }
+                              }
+                              return null;
+                          };
+                          const foundModel = search(run.inputs);
+                          if (foundModel) return foundModel;
+                      }
+                      // Fallback for capitals_structured which has no model info stored in the JSONL
+                      if (this.datasetName === 'capitals_structured') {
+                          return 'gpt-5-nano';
+                      }
+                      return 'N/A';
+                  },
 
-                get filteredPairs() {
-                    const query = this.gtSearchQuery.toLowerCase();
-                    return this.allPairs.filter(p => {
-                        let gtSearchStr = '';
-                        if (p.ev.ground_truth) {
-                            if (typeof p.ev.ground_truth === 'object') {
-                                gtSearchStr = Object.values(p.ev.ground_truth).join(' ');
-                            } else {
-                                gtSearchStr = String(p.ev.ground_truth);
-                            }
-                        }
-                        const matchSearch = p.input.toLowerCase().includes(query) || 
-                                             p.output.toLowerCase().includes(query) || 
-                                             gtSearchStr.toLowerCase().includes(query);
-                        let matchStatus = true;
-                        if (this.gtStatusFilter === 'correct') {
-                            matchStatus = p.ev.correct === true;
-                        } else if (this.gtStatusFilter === 'incorrect') {
-                            matchStatus = p.ev.correct === false;
-                        } else if (this.gtStatusFilter === 'pending') {
-                            matchStatus = p.ev.correct === null || p.ev.correct === undefined;
-                        }
-                        return matchSearch && matchStatus;
-                    });
-                },
-
-                getSystemPromptsText() {
-                    if (!this.selectedRun || !this.selectedRun.metadata) return '';
-                    const prompts = this.selectedRun.metadata.system_prompts;
-                    if (!prompts) return '';
-                    if (Array.isArray(prompts)) {
-                        return prompts.map(p => typeof p === 'string' ? p : JSON.stringify(p)).join('\\n\\n');
-                    }
-                    if (typeof prompts === 'string') {
-                        return prompts;
-                    }
-                    return JSON.stringify(prompts);
-                },
-
-                // Helper to summarize inputs cleanly for the sidebar list
-                getSidebarPreview(run) {
-                    if (!run) return '';
-                    const inputs = run.inputs;
-                    if (Array.isArray(inputs)) {
-                        const previews = inputs.map(inp => {
-                            if (inp && typeof inp === 'object') {
-                                const vals = Object.values(inp).filter(v => typeof v !== 'object' && v !== null);
-                                if (vals.length > 0) return vals.join(', ');
-                                return JSON.stringify(inp);
-                            }
-                            return String(inp);
-                        });
-                        return `Batch (${inputs.length}): ` + previews.join(' | ');
-                    } else if (inputs && typeof inputs === 'object') {
-                        const vals = Object.values(inputs).filter(v => typeof v !== 'object' && v !== null);
-                        if (vals.length > 0) return vals.join(', ');
-                        return JSON.stringify(inputs);
-                    }
-                    return String(inputs);
-                },
+                 // Helper to summarize inputs cleanly for the sidebar list
+                 getSidebarPreview(run) {
+                     if (!run) return '';
+                     const batchSize = this.getRunBatchSize(run);
+                     if (batchSize > 1) {
+                         const previews = [];
+                         for (let i = 0; i < Math.min(batchSize, 3); i++) {
+                             const inp = this.getPairInput(run, i);
+                             previews.push(this.getCleanText(inp));
+                         }
+                         let previewText = `Batch (${batchSize}): ` + previews.join(' | ');
+                         if (batchSize > 3) {
+                             previewText += ' ...';
+                         }
+                         return previewText;
+                     } else {
+                         const inp = this.getPairInput(run, 0);
+                         return this.getCleanText(inp);
+                     }
+                 },
 
                 // Helper to extract granular pair-wise metadata (Model Name, Tokens, Finish Reason)
                 getPairMetadata(run, index) {
@@ -1124,7 +1275,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 // Helper to check if a run is a batch execution
                 isBatchRun(run) {
                     if (!run) return false;
-                    return Array.isArray(run.inputs) && Array.isArray(run.outputs) && run.inputs.length === run.outputs.length;
+                    return Array.isArray(run.outputs);
                 },
 
                 // Stringifiers & Formatting
