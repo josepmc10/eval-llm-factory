@@ -109,6 +109,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     <i class="fa-solid fa-file-excel"></i>
                     <span>Ground Truth Generator</span>
                 </button>
+                <button @click="activeTab = 'training'; loadTrainingConfig(); loadExperiments()" 
+                        :class="activeTab === 'training' ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-500/20' : (darkMode ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900')" 
+                        class="px-5 py-2 text-sm rounded-lg flex items-center space-x-2 transition font-outfit">
+                    <i class="fa-solid fa-graduation-cap text-indigo-400"></i>
+                    <span>Training Panel</span>
+                </button>
             </div>
             
             <div class="flex items-center space-x-4">
@@ -697,8 +703,430 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                          </table>
                      </div>
                  </div>
+
+                <!-- Training Panel View -->
+             <div x-show="activeTab === 'training'" 
+                  class="flex-1 flex flex-col rounded-2xl overflow-hidden transition-all duration-300 min-h-0" x-transition>
+                 
+                 <div class="flex-1 grid grid-cols-1 xl:grid-cols-12 gap-6 min-h-0">
+                     <!-- Column 1: Experiments Sidebar (xl:col-span-3) -->
+                     <div :class="darkMode ? 'bg-[#0b0f19]/70 border-[#1f2e4d]' : 'bg-slate-50 border-slate-200'"
+                          class="xl:col-span-3 rounded-2xl border p-4 flex flex-col min-h-[500px] xl:h-full transition-colors duration-300">
+                         
+                         <div class="flex items-center justify-between mb-4 flex-shrink-0">
+                             <h3 :class="darkMode ? 'text-white' : 'text-slate-900'" class="font-bold font-outfit text-sm flex items-center space-x-1.5 animate-none">
+                                 <i class="fa-solid fa-clock-rotate-left text-indigo-400"></i>
+                                 <span>Experiment History</span>
+                             </h3>
+                             <button @click="selectedExperiment = null" 
+                                     :class="darkMode ? 'bg-[#131b2e] hover:bg-[#1e2e4f] text-indigo-300 border-[#1f2e4d]' : 'bg-white hover:bg-slate-100 text-indigo-600 border-slate-300'"
+                                     class="px-2.5 py-1.5 text-xs font-semibold rounded-lg border shadow-sm transition active:scale-[0.98]">
+                                 <i class="fa-solid fa-plus mr-1"></i> New
+                             </button>
+                         </div>
+
+                         <!-- List of experiments -->
+                         <div class="flex-1 overflow-y-auto custom-scrollbar space-y-2.5 pr-1 animate-none">
+                             <template x-if="experiments.length === 0">
+                                 <div :class="darkMode ? 'text-slate-500' : 'text-slate-400'" class="text-center py-12 text-sm italic font-outfit">
+                                     No experiments run yet.
+                                 </div>
+                             </template>
+                             
+                             <template x-for="exp in experiments" :key="exp.experiment_id">
+                                 <div @click="selectExperiment(exp)"
+                                      :class="selectedExperiment && selectedExperiment.experiment_id === exp.experiment_id ? 
+                                              (darkMode ? 'bg-indigo-950/40 border-indigo-500/50 shadow-md ring-1 ring-indigo-500/30' : 'bg-indigo-50/80 border-indigo-300 shadow-sm ring-1 ring-indigo-200') : 
+                                              (darkMode ? 'bg-[#090d16]/40 border-[#1f2e4d] hover:bg-[#131b2e]/30' : 'bg-white border-slate-200 hover:bg-slate-50')"
+                                      class="p-3 rounded-xl border cursor-pointer transition-all duration-200 transform hover:scale-[1.01] flex flex-col space-y-1.5 animate-none">
+                                     
+                                     <div class="flex justify-between items-start">
+                                         <span :class="darkMode ? 'text-indigo-400' : 'text-indigo-600'" class="font-mono text-[10px] font-bold" x-text="exp.experiment_id.substring(0,8)"></span>
+                                         <span :class="darkMode ? 'text-slate-500' : 'text-slate-400'" class="text-[10px]" x-text="new Date(exp.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'})"></span>
+                                     </div>
+
+                                     <div :class="darkMode ? 'text-slate-200' : 'text-slate-800'" class="text-xs font-bold truncate" x-text="exp.model"></div>
+                                     
+                                     <!-- Mini metrics badges -->
+                                     <div class="flex items-center space-x-1.5 pt-1">
+                                         <span :class="exp.metrics.accuracy >= 0.8 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20'" 
+                                               class="px-1.5 py-0.5 text-[9px] font-bold rounded border">
+                                             Acc: <span x-text="(exp.metrics.accuracy * 100).toFixed(0) + '%'"></span>
+                                         </span>
+                                         <span :class="exp.metrics.f1_score >= 0.8 ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' : 'bg-amber-500/10 text-amber-400 border-amber-500/20'" 
+                                               class="px-1.5 py-0.5 text-[9px] font-bold rounded border">
+                                             F1: <span x-text="(exp.metrics.f1_score * 100).toFixed(0) + '%'"></span>
+                                         </span>
+                                     </div>
+                                 </div>
+                             </template>
+                         </div>
+                     </div>
+
+                     <!-- Column 2: Center Configurator / Details View (xl:col-span-9) -->
+                     <div class="xl:col-span-9 flex flex-col min-h-0 space-y-6">
+                         
+                         <!-- Tab Content A: Editor (selectedExperiment === null) -->
+                         <template x-if="!selectedExperiment">
+                             <div :class="darkMode ? 'glass-card border-[#1f2e4d] bg-[#131b2e]/20' : 'bg-white border-slate-200 shadow-sm'"
+                                  class="flex-1 flex flex-col rounded-2xl border p-6 overflow-y-auto custom-scrollbar space-y-6 transition-all duration-300">
+                                 
+                                 <div class="flex justify-between items-center border-b pb-4" :class="darkMode ? 'border-[#1f2e4d]' : 'border-slate-200'">
+                                     <div>
+                                         <h2 :class="darkMode ? 'text-white' : 'text-slate-900'" class="text-lg font-bold font-outfit">Experiment Pipeline & Training Panel</h2>
+                                         <p :class="darkMode ? 'text-slate-400' : 'text-slate-500'" class="text-sm">Tweak parameters and run LLM batch experiments on your labeled ground truth instances.</p>
+                                     </div>
+                                 </div>
+
+                                 <!-- Model & Evaluation mappings -->
+                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                     <!-- Model Selection -->
+                                     <div class="space-y-2">
+                                         <label :class="darkMode ? 'text-slate-300' : 'text-slate-700'" class="block text-xs font-bold uppercase tracking-wider">Target LLM Model</label>
+                                         <div class="flex space-x-2">
+                                             <select x-model="trainingConfig.model" 
+                                                     :class="darkMode ? 'bg-[#090d16] border-[#1f2e4d] text-white focus:border-blue-500' : 'bg-white border-slate-300 text-slate-900 focus:ring-blue-500'"
+                                                     class="flex-1 border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 transition">
+                                                 <option value="gpt-4o-mini">gpt-4o-mini</option>
+                                                 <option value="gpt-4o">gpt-4o</option>
+                                                 <option value="gpt-5-nano">gpt-5-nano (development)</option>
+                                                 <option value="custom">-- Custom Model --</option>
+                                             </select>
+                                             <template x-if="trainingConfig.model === 'custom' || customModelInput !== ''">
+                                                 <input type="text" x-model="customModelInput" placeholder="Enter custom model..." 
+                                                        :class="darkMode ? 'bg-[#090d16] border-[#1f2e4d] text-white focus:border-blue-500' : 'bg-white border-slate-300 text-slate-900 focus:ring-blue-500'"
+                                                        class="w-48 border rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-1 transition">
+                                             </template>
+                                         </div>
+                                     </div>
+
+                                     <!-- Evaluation Mappings -->
+                                     <div class="space-y-2 animate-none">
+                                         <label :class="darkMode ? 'text-slate-300' : 'text-slate-700'" class="block text-xs font-bold uppercase tracking-wider">Evaluation Column & Metric</label>
+                                         <div class="space-y-2">
+                                             <template x-for="col in trainingConfig.columns" :key="col">
+                                                 <div class="flex items-center justify-between p-2 rounded-lg border bg-[#0b0f19]/30" :class="darkMode ? 'border-[#1f2e4d]' : 'border-slate-200'">
+                                                     <span class="font-mono text-xs font-semibold text-slate-400" x-text="col"></span>
+                                                     <select x-model="trainingConfig.evaluation_types[col]" 
+                                                             :class="darkMode ? 'bg-[#090d16] border-[#1f2e4d] text-white' : 'bg-white border-slate-300 text-slate-900'"
+                                                             class="border rounded-lg px-2 py-1 text-xs focus:outline-none transition">
+                                                         <option value="classification">Text Classification</option>
+                                                         <option value="similarity">Text Similarity (Future)</option>
+                                                     </select>
+                                                 </div>
+                                             </template>
+                                         </div>
+                                     </div>
+                                 </div>
+
+                                 <!-- Structured Output Schema Descriptions (if structured) -->
+                                 <template x-if="trainingConfig.columns.length > 1 || (trainingConfig.columns.length === 1 && trainingConfig.columns[0] !== 'output')">
+                                     <div class="space-y-3">
+                                         <h4 :class="darkMode ? 'text-slate-300' : 'text-slate-700'" class="text-xs font-bold uppercase tracking-wider">Structured Output Field Descriptions</h4>
+                                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                             <template x-for="col in trainingConfig.columns" :key="col">
+                                                 <div :class="darkMode ? 'bg-[#0b0f19]/50 border-[#1f2e4d]' : 'bg-slate-50 border-slate-200'" 
+                                                      class="p-3 rounded-xl border space-y-1.5">
+                                                     <div class="flex items-center justify-between">
+                                                         <span class="font-mono text-xs font-bold text-indigo-400" x-text="col"></span>
+                                                         <span class="text-[9px] uppercase font-bold text-slate-500">Editable Description</span>
+                                                     </div>
+                                                     <input type="text" x-model="trainingConfig.field_descriptions[col]"
+                                                            :class="darkMode ? 'bg-[#090d16] border-[#1f2e4d] text-white' : 'bg-white border-slate-300 text-slate-900'"
+                                                            class="w-full border rounded-lg px-2.5 py-1.5 text-xs focus:outline-none transition">
+                                                 </div>
+                                             </template>
+                                         </div>
+                                     </div>
+                                 </template>
+
+                                 <!-- System Prompt Editor -->
+                                 <div class="space-y-2">
+                                     <label :class="darkMode ? 'text-slate-300' : 'text-slate-700'" class="block text-xs font-bold uppercase tracking-wider">System Prompt Template</label>
+                                     <textarea x-model="trainingConfig.system_prompt" rows="6" 
+                                               placeholder="Define instructions, rules, and guidelines for the model..."
+                                               :class="darkMode ? 'bg-[#090d16] border-[#1f2e4d] text-white focus:border-blue-500 focus:ring-blue-500/20' : 'bg-white border-slate-300 text-slate-900 focus:ring-blue-500'"
+                                               class="w-full border rounded-xl p-3.5 text-sm font-sans focus:outline-none focus:ring-2 transition leading-relaxed custom-scrollbar"></textarea>
+                                 </div>
+
+                                 <!-- Pre-run KPIs Card and Action -->
+                                 <div :class="darkMode ? 'bg-[#0b0f19]/70 border-[#1f2e4d]' : 'bg-slate-50 border-slate-200'"
+                                      class="p-4 rounded-xl border flex flex-wrap items-center justify-between gap-4">
+                                     
+                                     <div class="flex space-x-6">
+                                         <div class="space-y-0.5">
+                                             <div :class="darkMode ? 'text-slate-400' : 'text-slate-500'" class="text-[10px] uppercase font-bold tracking-wider animate-none">Labeled Ground Truths</div>
+                                             <div :class="darkMode ? 'text-white' : 'text-slate-900'" class="text-xl font-extrabold font-outfit" x-text="groundTruthCount"></div>
+                                         </div>
+                                         <div class="space-y-0.5">
+                                             <div :class="darkMode ? 'text-slate-400' : 'text-slate-500'" class="text-[10px] uppercase font-bold tracking-wider animate-none">Estimated Cost</div>
+                                             <div :class="darkMode ? 'text-white' : 'text-slate-900'" class="text-xl font-extrabold font-outfit text-indigo-400">
+                                                 $<span x-text="expectedCost"></span>
+                                             </div>
+                                         </div>
+                                     </div>
+
+                                     <div class="flex items-center space-x-3">
+                                         <button @click="saveTrainingConfig()" 
+                                                 :class="darkMode ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700' : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-300 shadow-sm'"
+                                                 class="px-4 py-2.5 rounded-xl border text-sm font-bold transition active:scale-[0.98]">
+                                             Save Settings
+                                         </button>
+                                         
+                                         <button @click="runExperiment()" 
+                                                 :disabled="runningExperiment || groundTruthCount === 0"
+                                                 :class="groundTruthCount > 0 ? (darkMode ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg shadow-blue-500/20' : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-md shadow-blue-500/10') : 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed'"
+                                                 class="px-6 py-2.5 rounded-xl text-sm font-bold font-outfit flex items-center space-x-2 transition cursor-pointer active:scale-[0.98]">
+                                             <template x-if="runningExperiment">
+                                                 <div class="flex items-center space-x-2">
+                                                     <svg class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                                         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                     </svg>
+                                                     <span>Running Experiment...</span>
+                                                 </div>
+                                             </template>
+                                             <template x-if="!runningExperiment">
+                                                 <div class="flex items-center space-x-2">
+                                                     <i class="fa-solid fa-play text-xs"></i>
+                                                     <span>Run Experiment</span>
+                                                 </div>
+                                             </template>
+                                         </button>
+                                     </div>
+                                 </div>
+                             </div>
+                         </template>
+
+                         <!-- Tab Content B: Experiment Details View (selectedExperiment !== null) -->
+                         <template x-if="selectedExperiment">
+                             <div class="flex-1 flex flex-col space-y-6 min-h-0">
+                                 <!-- Detail Header card -->
+                                 <div :class="darkMode ? 'glass-card border-[#1f2e4d] bg-[#131b2e]/20' : 'bg-white border-slate-200 shadow-sm'"
+                                      class="p-6 rounded-2xl border flex flex-wrap items-center justify-between gap-4 transition-all duration-300">
+                                     
+                                     <div class="space-y-1 animate-none">
+                                         <div class="flex items-center space-x-2">
+                                             <span :class="darkMode ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' : 'bg-indigo-50 text-indigo-700 border-indigo-200'" 
+                                                   class="px-2 py-0.5 rounded border text-[10px] font-mono font-bold" x-text="selectedExperiment.experiment_id.substring(0,8)"></span>
+                                             <h2 :class="darkMode ? 'text-white' : 'text-slate-900'" class="text-base font-bold font-outfit" x-text="'Model: ' + selectedExperiment.model"></h2>
+                                         </div>
+                                         <p :class="darkMode ? 'text-slate-400' : 'text-slate-500'" class="text-xs" x-text="'Executed on ' + new Date(selectedExperiment.timestamp).toLocaleString()"></p>
+                                     </div>
+
+                                     <div class="flex items-center space-x-3 animate-none">
+                                         <button @click="copyToClipboard(selectedExperiment.system_prompt)" 
+                                                 :class="darkMode ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700' : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-300 shadow-sm'"
+                                                 class="px-3.5 py-2 rounded-xl border text-xs font-semibold flex items-center space-x-1.5 transition active:scale-[0.98]">
+                                             <i class="fa-solid fa-copy text-indigo-400"></i>
+                                             <span>Copy System Prompt</span>
+                                         </button>
+                                         <button @click="selectedExperiment = null" 
+                                                 :class="darkMode ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700' : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-300 shadow-sm'"
+                                                 class="px-3.5 py-2 rounded-xl border text-xs font-semibold flex items-center space-x-1.5 transition active:scale-[0.98]">
+                                             <i class="fa-solid fa-xmark text-slate-400"></i>
+                                             <span>Close Details</span>
+                                         </button>
+                                     </div>
+                                 </div>
+
+                                  <!-- Two Column Main Layout inside Details -->
+                                  <div class="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0">
+                                      
+                                      <!-- Left Column: Overall Performance, Column Metrics, Comparison Table (lg:col-span-8) -->
+                                      <div class="lg:col-span-8 flex flex-col space-y-6 overflow-y-auto custom-scrollbar pr-1">
+                                          
+                                          <!-- Compact Performance & Metrics Row -->
+                                          <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 flex-shrink-0">
+                                              
+                                              <!-- Overall Performance (lg:col-span-5) -->
+                                              <div :class="darkMode ? 'glass-card border-[#1f2e4d] bg-[#131b2e]/20' : 'bg-white border-slate-200 shadow-sm'"
+                                                   class="lg:col-span-5 p-3 rounded-xl border flex flex-col justify-center space-y-1">
+                                                  <span :class="darkMode ? 'text-slate-400' : 'text-slate-500'" class="text-[9px] uppercase font-bold tracking-wider font-outfit">Overall Performance</span>
+                                                  <div class="grid grid-cols-4 gap-1">
+                                                      <div class="text-center">
+                                                          <div class="text-[7.5px] text-slate-500 uppercase font-bold">Acc</div>
+                                                          <div class="text-sm font-black font-outfit" x-text="(selectedExperiment.metrics.accuracy * 100).toFixed(0) + '%'"></div>
+                                                      </div>
+                                                      <div class="text-center">
+                                                          <div class="text-[7.5px] text-slate-500 uppercase font-bold">F1</div>
+                                                          <div class="text-sm font-black font-outfit text-indigo-400" x-text="(selectedExperiment.metrics.f1_score * 100).toFixed(0) + '%'"></div>
+                                                      </div>
+                                                      <div class="text-center">
+                                                          <div class="text-[7.5px] text-slate-500 uppercase font-bold">Time</div>
+                                                          <div class="text-xs font-bold font-outfit" x-text="(selectedExperiment.metadata.duration_seconds).toFixed(1) + 's'"></div>
+                                                      </div>
+                                                      <div class="text-center">
+                                                          <div class="text-[7.5px] text-slate-500 uppercase font-bold">Cost</div>
+                                                          <div class="text-xs font-bold font-outfit text-emerald-400" x-text="'$' + (selectedExperiment.metadata.tokens.total_cost).toFixed(4)"></div>
+                                                      </div>
+                                                  </div>
+                                              </div>
+
+                                              <!-- Metrics by Column (lg:col-span-7) -->
+                                              <template x-if="selectedExperiment.metrics.metrics_by_column && Object.keys(selectedExperiment.metrics.metrics_by_column).length > 0">
+                                                  <div :class="darkMode ? 'glass-card border-[#1f2e4d] bg-[#131b2e]/20' : 'bg-white border-slate-200 shadow-sm'"
+                                                       class="lg:col-span-7 p-3 rounded-xl border flex flex-col justify-center space-y-1 overflow-hidden">
+                                                      <span :class="darkMode ? 'text-slate-400' : 'text-slate-500'" class="text-[9px] uppercase font-bold tracking-wider font-outfit">Metrics by Column</span>
+                                                      <div class="flex flex-wrap gap-1.5 max-h-[50px] overflow-y-auto custom-scrollbar">
+                                                          <template x-for="(m, col) in selectedExperiment.metrics.metrics_by_column" :key="col">
+                                                              <div :class="darkMode ? 'bg-[#0b0f19]/60 border-[#1f2e4d]/60' : 'bg-slate-50 border-slate-200'"
+                                                                   class="px-2 py-0.5 rounded-lg border flex items-center space-x-1.5 text-[9.5px] font-mono">
+                                                                  <span class="font-bold text-indigo-400" x-text="col"></span>
+                                                                  <template x-if="selectedExperiment.evaluation_types[col] !== 'similarity'">
+                                                                      <div class="flex space-x-1 text-slate-400">
+                                                                          <span>A:<span class="text-slate-200 font-bold" x-text="(m.accuracy * 100).toFixed(0)"></span>%</span>
+                                                                          <span>F1:<span class="text-slate-200 font-bold" x-text="(m.f1_score * 100).toFixed(0)"></span>%</span>
+                                                                      </div>
+                                                                  </template>
+                                                                  <template x-if="selectedExperiment.evaluation_types[col] === 'similarity'">
+                                                                      <span class="text-amber-500 font-semibold italic text-[8.5px]">Similarity</span>
+                                                                  </template>
+                                                              </div>
+                                                          </template>
+                                                      </div>
+                                                  </div>
+                                              </template>
+                                          </div>
+
+                                          <!-- Experiment Instance Comparison Table -->
+                                          <div :class="darkMode ? 'glass-card border-[#1f2e4d] bg-[#131b2e]/20' : 'bg-white border-slate-200 shadow-sm'"
+                                               class="flex flex-col rounded-2xl border overflow-hidden transition-all duration-300">
+                                              
+                                              <div :class="darkMode ? 'bg-[#0b0f19]/40 border-[#1f2e4d]' : 'bg-slate-50 border-slate-200'" class="p-4 border-b">
+                                                  <h3 :class="darkMode ? 'text-white' : 'text-slate-900'" class="text-xs font-bold uppercase tracking-wider">Experiment Instance Comparison Table</h3>
+                                              </div>
+
+                                              <div class="overflow-x-auto overflow-y-auto h-[700px] custom-scrollbar">
+                                                  <table class="w-full text-left border-collapse table-fixed min-w-[700px]">
+                                                      <thead>
+                                                          <tr :class="darkMode ? 'bg-[#090d16]/60 border-[#1f2e4d]' : 'bg-slate-100/80 border-slate-200'" class="border-b transition-colors font-outfit text-[11px] font-bold uppercase text-slate-500 tracking-wider">
+                                                              <th class="py-3 px-4 w-28">Status</th>
+                                                              <th class="py-3 px-4 w-1/3">Input</th>
+                                                              <th class="py-3 px-4 w-1/4">Expected (Ground Truth)</th>
+                                                              <th class="py-3 px-4 w-1/3">Model Response</th>
+                                                          </tr>
+                                                      </thead>
+                                                      <tbody>
+                                                          <template x-for="(inst, i) in selectedExperiment.instances" :key="i">
+                                                              <tr :class="darkMode ? 'border-[#1f2e4d] hover:bg-[#131b2e]/10' : 'border-slate-200 hover:bg-slate-50/50'"
+                                                                  class="border-b transition-colors">
+                                                                  
+                                                                  <td class="py-3.5 px-4 font-outfit animate-none">
+                                                                      <template x-if="inst.correct">
+                                                                          <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                                                              <i class="fa-solid fa-circle-check mr-1 text-[8px]"></i> Correct
+                                                                          </span>
+                                                                      </template>
+                                                                      <template x-if="!inst.correct">
+                                                                          <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                                                                              <i class="fa-solid fa-circle-xmark mr-1 text-[8px]"></i> Incorrect
+                                                                          </span>
+                                                                      </template>
+                                                                  </td>
+
+                                                                  <!-- Clean user prompt / input with truncate toggle -->
+                                                                  <td :class="darkMode ? 'text-slate-300 font-sans' : 'text-slate-700 font-sans'" class="py-3.5 px-4 text-xs whitespace-pre-wrap transition">
+                                                                      <span x-text="isInputExpanded(i) ? getCleanInputText(inst) : (getCleanInputText(inst).length > 80 ? getCleanInputText(inst).substring(0, 80) + '...' : getCleanInputText(inst))"></span>
+                                                                      <template x-if="getCleanInputText(inst).length > 80">
+                                                                          <button @click="toggleInput(i)" class="text-indigo-400 hover:text-indigo-300 font-bold ml-1.5 focus:outline-none transition inline-block">
+                                                                              <span x-text="isInputExpanded(i) ? '[Show Less]' : '[Show More]'"></span>
+                                                                          </button>
+                                                                      </template>
+                                                                  </td>
+                                                                  
+                                                                  <!-- Expected GT with truncate toggle on similarity fields -->
+                                                                  <td :class="darkMode ? 'text-slate-300 font-sans' : 'text-slate-700 font-sans'" class="py-3.5 px-4 text-xs font-semibold whitespace-pre-wrap">
+                                                                      <template x-if="typeof inst.ground_truth === 'object'">
+                                                                          <div class="space-y-1.5 animate-none">
+                                                                              <template x-for="(v, k) in inst.ground_truth" :key="k">
+                                                                                  <div class="flex flex-col text-[11px] animate-none border-b border-slate-800/10 pb-1.5 last:border-0 last:pb-0">
+                                                                                      <div class="flex flex-wrap items-baseline gap-x-1.5">
+                                                                                          <span class="text-slate-500 font-mono font-bold uppercase text-[9px]" x-text="k + ':'"></span>
+                                                                                          <span :class="selectedExperiment.evaluation_types[k] === 'similarity' ? 'text-amber-400 font-semibold' : 'text-indigo-400'"
+                                                                                                x-text="isFieldExpanded(i, k) ? v : (selectedExperiment.evaluation_types[k] === 'similarity' && String(v).length > 60 ? String(v).substring(0, 60) + '...' : v)"></span>
+                                                                                          <template x-if="selectedExperiment.evaluation_types[k] === 'similarity' && String(v).length > 60">
+                                                                                              <button @click="toggleField(i, k)" class="text-[9px] text-indigo-400 hover:text-indigo-300 font-bold focus:outline-none select-none inline-block ml-1 hover:underline">
+                                                                                                  <span x-text="isFieldExpanded(i, k) ? 'Less' : 'More'"></span>
+                                                                                              </button>
+                                                                                          </template>
+                                                                                      </div>
+                                                                                  </div>
+                                                                              </template>
+                                                                          </div>
+                                                                      </template>
+                                                                      <template x-if="typeof inst.ground_truth !== 'object'">
+                                                                          <span x-text="inst.ground_truth"></span>
+                                                                      </template>
+                                                                  </td>
+
+                                                                  <!-- Model Response with truncate toggle on similarity fields -->
+                                                                  <td :class="darkMode ? 'text-slate-200 font-medium font-sans' : 'text-slate-900 font-medium font-sans'" class="py-3.5 px-4 text-xs whitespace-pre-wrap">
+                                                                      <template x-if="typeof inst.output === 'object'">
+                                                                          <div class="space-y-1.5 animate-none">
+                                                                              <template x-for="(v, k) in inst.output" :key="k">
+                                                                                  <div class="flex flex-col text-[11px] animate-none border-b border-slate-800/10 pb-1.5 last:border-0 last:pb-0">
+                                                                                      <div class="flex flex-wrap items-baseline gap-x-1.5">
+                                                                                          <span class="text-slate-500 font-mono font-bold uppercase text-[9px]" x-text="k + ':'"></span>
+                                                                                          <span :class="selectedExperiment.evaluation_types[k] === 'classification' ? (toClean_str_is_matching(v, inst.ground_truth[k]) ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold') : (darkMode ? 'text-slate-300' : 'text-slate-700')"
+                                                                                                x-text="isFieldExpanded(i, k) ? v : (selectedExperiment.evaluation_types[k] === 'similarity' && String(v).length > 60 ? String(v).substring(0, 60) + '...' : v)"></span>
+                                                                                          <template x-if="selectedExperiment.evaluation_types[k] === 'similarity' && String(v).length > 60">
+                                                                                              <button @click="toggleField(i, k)" class="text-[9px] text-indigo-400 hover:text-indigo-300 font-bold focus:outline-none select-none inline-block ml-1 hover:underline">
+                                                                                                  <span x-text="isFieldExpanded(i, k) ? 'Less' : 'More'"></span>
+                                                                                              </button>
+                                                                                          </template>
+                                                                                      </div>
+                                                                                  </div>
+                                                                              </template>
+                                                                          </div>
+                                                                      </template>
+                                                                      <template x-if="typeof inst.output !== 'object'">
+                                                                          <span :class="(selectedExperiment.evaluation_types['output'] === 'classification' || selectedExperiment.evaluation_types[Object.keys(selectedExperiment.evaluation_types)[0]] === 'classification') ? (toClean_str_is_matching(inst.output, inst.ground_truth) ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold') : (darkMode ? 'text-slate-300' : 'text-slate-700')" x-text="inst.output"></span>
+                                                                      </template>
+                                                                  </td>
+                                                              </tr>
+                                                          </template>
+                                                      </tbody>
+                                                  </table>
+                                              </div>
+                                          </div>
+                                      </div>
+
+                                      <!-- Right Column: System Prompt & Schema Details (lg:col-span-4) -->
+                                      <div class="lg:col-span-4 flex flex-col space-y-6 overflow-y-auto custom-scrollbar pl-1">
+                                          
+                                          <!-- System Prompt card -->
+                                          <div :class="darkMode ? 'glass-card border-[#1f2e4d] bg-[#131b2e]/20' : 'bg-white border-slate-200 shadow-sm'"
+                                               class="p-5 rounded-2xl border space-y-2">
+                                              <h3 :class="darkMode ? 'text-white' : 'text-slate-900'" class="text-xs font-bold uppercase tracking-wider font-outfit">System Prompt Used</h3>
+                                              <pre :class="darkMode ? 'bg-[#090d16] border-[#1f2e4d] text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'"
+                                                   class="h-72 overflow-y-auto custom-scrollbar border rounded-xl p-3 font-mono text-xs whitespace-pre-wrap text-left select-all leading-relaxed" 
+                                                   x-text="selectedExperiment.system_prompt"></pre>
+                                          </div>
+
+                                          <!-- Structured output column details (Field Descriptions) -->
+                                          <template x-if="selectedExperiment.field_descriptions && Object.keys(selectedExperiment.field_descriptions).length > 0">
+                                              <div :class="darkMode ? 'glass-card border-[#1f2e4d] bg-[#131b2e]/20' : 'bg-white border-slate-200 shadow-sm'"
+                                                   class="p-5 rounded-2xl border space-y-3">
+                                                  <h3 :class="darkMode ? 'text-white' : 'text-slate-900'" class="text-xs font-bold uppercase tracking-wider font-outfit">Field Descriptions & Schema</h3>
+                                                  <div class="space-y-2.5 animate-none">
+                                                      <template x-for="(desc, field) in selectedExperiment.field_descriptions" :key="field">
+                                                          <div class="p-3 rounded-xl border bg-[#0b0f19]/30 space-y-1" :class="darkMode ? 'border-[#1f2e4d]' : 'border-slate-200'">
+                                                              <span class="font-mono text-xs font-bold text-indigo-400" x-text="field"></span>
+                                                              <p :class="darkMode ? 'text-slate-300' : 'text-slate-600'" class="text-xs font-sans italic animate-none" x-text="desc"></p>
+                                                          </div>
+                                                      </template>
+                                                  </div>
+                                              </div>
+                                          </template>
+                                      </div>
+                                  </div>
+                             </div>
+                         </template>
+                     </div>
+                 </div>
              </div>
-            
+             
          </div>
      </div>
 
@@ -722,8 +1150,89 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 gtStatusFilter: 'all',
                 selectedPairKeys: [],
 
+                // Training Panel / Experiments State
+                trainingConfig: {
+                    model: 'gpt-4o-mini',
+                    system_prompt: '',
+                    columns: [],
+                    evaluation_types: {},
+                    field_descriptions: {}
+                },
+                experiments: [],
+                selectedExperiment: null,
+                runningExperiment: false,
+                experimentError: '',
+                customModelInput: '',
+                expandedInputs: {},
+                expandedFields: {},
+
+                // Helper to get total ground truths count
+                get groundTruthCount() {
+                    return this.allPairs.filter(p => {
+                        const correct = p.ev.correct;
+                        const gt = p.ev.ground_truth;
+                        if (correct === true) return true;
+                        if (gt !== null && gt !== undefined) {
+                            if (typeof gt === 'object') {
+                                return Object.values(gt).some(v => v !== null && String(v).trim() !== '');
+                            }
+                            return String(gt).trim() !== '';
+                        }
+                        return false;
+                    }).length;
+                },
+
+                // Real-time cost estimation
+                get expectedCost() {
+                    const count = this.groundTruthCount;
+                    if (count === 0) return '0.00';
+
+                    const sysPromptChars = (this.trainingConfig.system_prompt || '').length;
+
+                    let userPromptChars = 0;
+                    const gtPairs = this.allPairs.filter(p => {
+                        const correct = p.ev.correct;
+                        const gt = p.ev.ground_truth;
+                        if (correct === true) return true;
+                        if (gt !== null && gt !== undefined) {
+                            if (typeof gt === 'object') {
+                                return Object.values(gt).some(v => v !== null && String(v).trim() !== '');
+                            }
+                            return String(gt).trim() !== '';
+                        }
+                        return false;
+                    });
+
+                    gtPairs.forEach(p => {
+                        userPromptChars += (p.input || '').length;
+                    });
+
+                    const avgInputTokens = Math.ceil(((sysPromptChars + (userPromptChars / count)) / 4)) || 0;
+                    const estimatedOutputTokens = 100;
+
+                    let inputRate = 0.000005;
+                    let outputRate = 0.000015;
+
+                    const m = (this.trainingConfig.model || '').toLowerCase();
+                    if (m.includes('mini')) {
+                        inputRate = 0.00000015;
+                        outputRate = 0.0000006;
+                    } else if (m.includes('gpt-5') || m.includes('nano')) {
+                        inputRate = 0.00000015;
+                        outputRate = 0.0000006;
+                    } else if (m.includes('gpt-4o')) {
+                        inputRate = 0.000005;
+                        outputRate = 0.000015;
+                    }
+
+                    const totalCost = count * ( (avgInputTokens * inputRate) + (estimatedOutputTokens * outputRate) );
+                    return totalCost.toFixed(4);
+                },
+
                 init() {
                     this.fetchRuns();
+                    this.loadTrainingConfig();
+                    this.loadExperiments();
                 },
 
                 getOutputStructuredFields(outputObj) {
@@ -932,6 +1441,130 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     } catch (err) {
                         alert("Error saving ground truth: " + err.message);
                     }
+                },
+
+                async loadTrainingConfig() {
+                    try {
+                        const res = await fetch('/api/config');
+                        if (!res.ok) throw new Error('Failed to load configuration');
+                        this.trainingConfig = await res.json();
+                        
+                        const preModels = ['gpt-4o', 'gpt-4o-mini', 'gpt-5-nano'];
+                        if (!preModels.includes(this.trainingConfig.model)) {
+                            this.customModelInput = this.trainingConfig.model;
+                        } else {
+                            this.customModelInput = '';
+                        }
+                    } catch (err) {
+                        console.error("Error loading config: ", err);
+                    }
+                },
+                
+                async saveTrainingConfig() {
+                    try {
+                        const res = await fetch('/api/config', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(this.trainingConfig)
+                        });
+                        if (!res.ok) throw new Error('Failed to save configuration');
+                    } catch (err) {
+                        alert("Error saving config: " + err.message);
+                    }
+                },
+                
+                async loadExperiments() {
+                    try {
+                        const res = await fetch('/api/experiments');
+                        if (!res.ok) throw new Error('Failed to load experiments');
+                        this.experiments = await res.json();
+                        
+                        if (this.experiments.length > 0 && !this.selectedExperiment) {
+                            this.selectExperiment(this.experiments[0]);
+                        }
+                    } catch (err) {
+                        console.error("Error loading experiments: ", err);
+                    }
+                },
+                
+                selectExperiment(exp) {
+                    this.selectedExperiment = exp;
+                },
+                
+                async runExperiment() {
+                    this.runningExperiment = true;
+                    this.experimentError = '';
+                    
+                    if (this.customModelInput) {
+                        this.trainingConfig.model = this.customModelInput;
+                    }
+                    
+                    try {
+                        const res = await fetch('/api/run_experiment', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(this.trainingConfig)
+                        });
+                        
+                        const result = await res.json();
+                        if (!res.ok) {
+                            throw new Error(result.error || 'Failed to run experiment');
+                        }
+                        
+                        this.experiments.unshift(result);
+                        this.selectExperiment(result);
+                        alert("🎉 Experiment completed successfully! Metrics calculated.");
+                    } catch (err) {
+                        this.experimentError = err.message;
+                        alert("❌ Error running experiment: " + err.message);
+                    } finally {
+                        this.runningExperiment = false;
+                    }
+                },
+                
+                copyToClipboard(text) {
+                    navigator.clipboard.writeText(text);
+                    alert("📋 Copied to clipboard!");
+                },
+
+                toClean_str_is_matching(v1, v2) {
+                    if (v1 === undefined || v1 === null) v1 = '';
+                    if (v2 === undefined || v2 === null) v2 = '';
+                    return String(v1).trim().toLowerCase() === String(v2).trim().toLowerCase();
+                },
+
+                getCleanInputText(inst) {
+                    if (!inst) return '';
+                    const text = inst.user_prompt || inst.input || '';
+                    if (typeof text === 'object') {
+                        return JSON.stringify(text, null, 2);
+                    }
+                    if (typeof text === 'string') {
+                        const trimmed = text.trim();
+                        if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+                            try {
+                                const parsed = JSON.parse(trimmed);
+                                if (parsed.chain) {
+                                    return 'LangChain RunnableSequence';
+                                }
+                                return JSON.stringify(parsed, null, 2);
+                            } catch (e) {}
+                        }
+                    }
+                    return text;
+                },
+
+                isInputExpanded(i) {
+                    return this.expandedInputs[i] || false;
+                },
+                toggleInput(i) {
+                    this.expandedInputs = { ...this.expandedInputs, [i]: !this.isInputExpanded(i) };
+                },
+                isFieldExpanded(i, k) {
+                    return this.expandedFields[`${i}_${k}`] || false;
+                },
+                toggleField(i, k) {
+                    this.expandedFields = { ...this.expandedFields, [`${i}_${k}`]: !this.isFieldExpanded(i, k) };
                 },
 
                 togglePair(key) {
@@ -1481,6 +2114,20 @@ class VisualizerHTTPHandler(BaseHTTPRequestHandler):
             else:
                 self.send_response(404)
                 self.end_headers()
+        elif self.path == "/api/config":
+            self.send_response(200)
+            self.send_header("Content-type", "application/json; charset=utf-8")
+            self.end_headers()
+            from eval_factory.config_manager import load_dataset_config
+            cfg = load_dataset_config(self.server.dataset_name, self.server.base_dir)
+            self.wfile.write(json.dumps(cfg).encode("utf-8"))
+        elif self.path == "/api/experiments":
+            self.send_response(200)
+            self.send_header("Content-type", "application/json; charset=utf-8")
+            self.end_headers()
+            from eval_factory.config_manager import load_experiments
+            exps = load_experiments(self.server.dataset_name, self.server.base_dir)
+            self.wfile.write(json.dumps(exps, cls=RobustEncoder).encode("utf-8"))
         else:
             self.send_response(404)
             self.end_headers()
@@ -1517,7 +2164,368 @@ class VisualizerHTTPHandler(BaseHTTPRequestHandler):
                 self.send_response(500)
                 self.end_headers()
                 self.wfile.write(str(e).encode("utf-8"))
+        elif self.path == "/api/config":
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            try:
+                data = json.loads(post_data.decode("utf-8"))
+                from eval_factory.config_manager import save_dataset_config
+                save_dataset_config(self.server.dataset_name, data, self.server.base_dir)
+                
+                self.send_response(200)
+                self.send_header("Content-type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"status": "success"}).encode("utf-8"))
+            except Exception as e:
+                self.send_response(500)
+                self.end_headers()
+                self.wfile.write(str(e).encode("utf-8"))
+        elif self.path == "/api/run_experiment":
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            try:
+                import uuid
+                import time
+                from datetime import datetime
 
+                req_data = json.loads(post_data.decode("utf-8"))
+                model = req_data.get("model", "gpt-4o-mini")
+                system_prompt = req_data.get("system_prompt", "")
+                evaluation_types = req_data.get("evaluation_types", {})
+                field_descriptions = req_data.get("field_descriptions", {})
+
+                # 1. Update config file
+                from eval_factory.config_manager import load_dataset_config, save_dataset_config
+                current_cfg = load_dataset_config(self.server.dataset_name, self.server.base_dir)
+                current_cfg["model"] = model
+                current_cfg["system_prompt"] = system_prompt
+                current_cfg["evaluation_types"] = evaluation_types
+                current_cfg["field_descriptions"] = field_descriptions
+                save_dataset_config(self.server.dataset_name, current_cfg, self.server.base_dir)
+
+                # 2. Check LangChain dependencies dynamically
+                try:
+                    from langchain_openai import ChatOpenAI
+                    from langchain_core.messages import SystemMessage, HumanMessage
+                    HAS_LANGCHAIN = True
+                except ImportError:
+                    HAS_LANGCHAIN = False
+
+                if not HAS_LANGCHAIN:
+                    self.send_response(400)
+                    self.send_header("Content-type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        "error": "LangChain dependencies are required for the Training Panel. Please run `pip install langchain langchain-openai` in your terminal."
+                    }).encode("utf-8"))
+                    return
+
+                # 3. Read ground truths from the dataset file
+                runs = []
+                file_path = self.server.dataset_file
+                if os.path.exists(file_path):
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        for line in f:
+                            if line.strip():
+                                try:
+                                    runs.append(json.loads(line))
+                                except Exception:
+                                    pass
+
+                # Extract all pairs with ground truth
+                from eval_factory.config_manager import detect_output_columns
+                columns = detect_output_columns(self.server.dataset_name, self.server.base_dir)
+                is_structured = len(columns) > 1 or columns[0] != "output"
+
+                gt_items = []
+                for run in runs:
+                    outputs = run.get("outputs", [])
+                    inputs = run.get("inputs", [])
+                    evals = run.get("evaluation", [])
+                    if not isinstance(evals, list):
+                        evals = [evals] if evals else []
+                    
+                    num_items = len(outputs) if isinstance(outputs, list) else 1
+                    
+                    # Normalize list padding
+                    while len(evals) < num_items:
+                        evals.append({})
+                    
+                    for i in range(num_items):
+                        ev = evals[i] or {}
+                        correct = ev.get("correct")
+                        gt_val = ev.get("ground_truth")
+
+                        # Determine if this item has ground truth
+                        has_gt = False
+                        resolved_gt = None
+
+                        if correct is True:
+                            has_gt = True
+                            # Original output is ground truth
+                            resolved_gt = outputs[i] if isinstance(outputs, list) else outputs
+                        elif gt_val is not None:
+                            if is_structured:
+                                if isinstance(gt_val, dict):
+                                    if any(str(v).strip() for v in gt_val.values()):
+                                        has_gt = True
+                                        resolved_gt = gt_val
+                                elif isinstance(gt_val, str):
+                                    try:
+                                        parsed_gt = json.loads(gt_val)
+                                        if isinstance(parsed_gt, dict) and any(str(v).strip() for v in parsed_gt.values()):
+                                            has_gt = True
+                                            resolved_gt = parsed_gt
+                                    except Exception:
+                                        pass
+                            else:
+                                if str(gt_val).strip():
+                                    has_gt = True
+                                    resolved_gt = str(gt_val)
+
+                        if has_gt:
+                            # Extract user prompt/input for this item
+                            user_prompt = ""
+                            metadata = run.get("metadata", {})
+                            user_prompts = metadata.get("user_prompts", [])
+                            if isinstance(user_prompts, list) and i < len(user_prompts):
+                                user_prompt = user_prompts[i]
+                            elif isinstance(inputs, list) and len(inputs) == num_items:
+                                inp_val = inputs[i]
+                                user_prompt = json.dumps(inp_val) if isinstance(inp_val, (dict, list)) else str(inp_val)
+                            else:
+                                user_prompt = json.dumps(inputs) if isinstance(inputs, (dict, list)) else str(inputs)
+
+                            gt_items.append({
+                                "original_input": inputs[i] if (isinstance(inputs, list) and len(inputs) == num_items) else inputs,
+                                "user_prompt": user_prompt,
+                                "ground_truth": resolved_gt
+                            })
+
+                if not gt_items:
+                    self.send_response(400)
+                    self.send_header("Content-type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        "error": "No ground truth instances found! Please tag some input-output pairs as 'Correct' or fill in 'Ground Truth' under the 'Ground Truth Generator' tab first."
+                    }).encode("utf-8"))
+                    return
+
+                # Load environment variables from .env if available
+                try:
+                    from dotenv import load_dotenv
+                    load_dotenv()
+                except ImportError:
+                    pass
+
+                openai_api_key = os.environ.get("OPENAI_API_KEY")
+                if not openai_api_key or not openai_api_key.strip() or "your_api_key" in openai_api_key.lower():
+                    self.send_response(400)
+                    self.send_header("Content-type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        "error": "OPENAI_API_KEY is missing or empty. Please set your actual API key in the .env file in the project root."
+                    }).encode("utf-8"))
+                    return
+
+                # 4. Instantiate LangChain model
+                try:
+                    llm = ChatOpenAI(model=model, temperature=0, api_key=openai_api_key)
+                except TypeError:
+                    llm = ChatOpenAI(model=model, temperature=0, openai_api_key=openai_api_key)
+
+                # Determine dynamic structured output schema
+                if is_structured:
+                    # Determine types of fields from original outputs
+                    col_types = {}
+                    for run in runs:
+                        outputs = run.get("outputs", [])
+                        first_out = outputs[0] if isinstance(outputs, list) and outputs else outputs
+                        if isinstance(first_out, dict):
+                            for col in columns:
+                                val = first_out.get(col)
+                                if isinstance(val, bool):
+                                    col_types[col] = "boolean"
+                                elif isinstance(val, (int, float)):
+                                    col_types[col] = "number"
+                                else:
+                                    col_types[col] = "string"
+                            break
+
+                    schema = {
+                        "title": "StructuredOutput",
+                        "type": "object",
+                        "properties": {
+                            col: {
+                                "type": col_types.get(col, "string"),
+                                "description": field_descriptions.get(col, f"Expected value for {col}")
+                            } for col in columns
+                        },
+                        "required": columns
+                    }
+                    llm = llm.with_structured_output(schema)
+
+                # 5. Call batch model execution
+                batch_messages = [
+                    [
+                        SystemMessage(content=system_prompt),
+                        HumanMessage(content=item["user_prompt"])
+                    ]
+                    for item in gt_items
+                ]
+
+                start_time = time.time()
+                
+                # API key already loaded and validated before model instantiation
+
+                try:
+                    from langchain_community.callbacks import get_openai_callback
+                    with get_openai_callback() as cb:
+                        raw_responses = llm.batch(batch_messages)
+                        duration = time.time() - start_time
+                        total_cost = cb.total_cost
+                        total_tokens = cb.total_tokens
+                        prompt_tokens = cb.prompt_tokens
+                        completion_tokens = cb.completion_tokens
+                except Exception:
+                    # Fallback if callback fails
+                    raw_responses = llm.batch(batch_messages)
+                    duration = time.time() - start_time
+                    # Estimate tokens
+                    input_chars = sum(len(system_prompt) + len(item["user_prompt"]) for item in gt_items)
+                    output_chars = sum(len(str(res)) for res in raw_responses)
+                    prompt_tokens = int(input_chars / 4)
+                    completion_tokens = int(output_chars / 4)
+                    total_tokens = prompt_tokens + completion_tokens
+                    total_cost = (prompt_tokens * 0.00000015) + (completion_tokens * 0.0000006)
+
+                # 6. Parse responses and evaluate correctness
+                instances_record = []
+                
+                def to_clean_str(val):
+                    if val is None:
+                        return ""
+                    return str(val).strip().lower()
+
+                metrics_by_col = {}
+                
+                for col in columns:
+                    col_preds = []
+                    col_gts = []
+                    
+                    for idx, res in enumerate(raw_responses):
+                        item = gt_items[idx]
+                        gt_val = item["ground_truth"]
+                        
+                        # Extract prediction for this column
+                        pred_val = ""
+                        if is_structured:
+                            dict_res = res if isinstance(res, dict) else {}
+                            if hasattr(res, "dict"):
+                                dict_res = res.dict()
+                            elif hasattr(res, "model_dump"):
+                                dict_res = res.model_dump()
+                            
+                            pred_val = dict_res.get(col, "")
+                            gt_col_val = gt_val.get(col, "") if isinstance(gt_val, dict) else ""
+                        else:
+                            pred_val = res.content if hasattr(res, "content") else str(res)
+                            gt_col_val = gt_val
+
+                        col_preds.append(pred_val)
+                        col_gts.append(gt_col_val)
+
+                    # Compute classification metrics for this column
+                    from eval_factory.metrics import calculate_classification_metrics
+                    metrics_by_col[col] = calculate_classification_metrics(col_preds, col_gts)
+
+                # Determine overall aggregate metrics (only over classification columns)
+                class_cols = [c for c in columns if evaluation_types.get(c) == "classification"]
+                if not class_cols:
+                    class_cols = columns
+
+                avg_accuracy = sum(metrics_by_col[col]["accuracy"] for col in class_cols) / len(class_cols)
+                avg_precision = sum(metrics_by_col[col]["precision"] for col in class_cols) / len(class_cols)
+                avg_recall = sum(metrics_by_col[col]["recall"] for col in class_cols) / len(class_cols)
+                avg_f1 = sum(metrics_by_col[col]["f1_score"] for col in class_cols) / len(class_cols)
+
+                # Construct detail rows for instances list
+                for idx, res in enumerate(raw_responses):
+                    item = gt_items[idx]
+                    gt_val = item["ground_truth"]
+                    
+                    # Extract prediction
+                    if is_structured:
+                        dict_res = res if isinstance(res, dict) else {}
+                        if hasattr(res, "dict"):
+                            dict_res = res.dict()
+                        elif hasattr(res, "model_dump"):
+                            dict_res = res.model_dump()
+                        pred_val = dict_res
+                        
+                        # Correctness checks if ALL classification columns match
+                        correct = True
+                        for col in columns:
+                            if evaluation_types.get(col) == "similarity":
+                                continue
+                            pred_col = to_clean_str(pred_val.get(col))
+                            gt_col = to_clean_str(gt_val.get(col) if isinstance(gt_val, dict) else "")
+                            if pred_col != gt_col:
+                                correct = False
+                                break
+                    else:
+                        pred_val = res.content if hasattr(res, "content") else str(res)
+                        correct = to_clean_str(pred_val) == to_clean_str(gt_val)
+
+                    instances_record.append({
+                        "input": item["original_input"],
+                        "user_prompt": item["user_prompt"],
+                        "ground_truth": gt_val,
+                        "output": pred_val,
+                        "correct": correct
+                    })
+
+                # 7. Construct experiment run record
+                experiment_record = {
+                    "experiment_id": str(uuid.uuid4()),
+                    "timestamp": datetime.utcnow().isoformat() + "Z",
+                    "model": model,
+                    "system_prompt": system_prompt,
+                    "evaluation_types": evaluation_types,
+                    "field_descriptions": field_descriptions,
+                    "metrics": {
+                        "accuracy": avg_accuracy,
+                        "precision": avg_precision,
+                        "recall": avg_recall,
+                        "f1_score": avg_f1,
+                        "metrics_by_column": metrics_by_col
+                    },
+                    "metadata": {
+                        "duration_seconds": duration,
+                        "tokens": {
+                            "total_tokens": total_tokens,
+                            "prompt_tokens": prompt_tokens,
+                            "completion_tokens": completion_tokens,
+                            "total_cost": total_cost
+                        }
+                    },
+                    "instances": instances_record
+                }
+
+                # 8. Save experiment run record
+                from eval_factory.config_manager import save_experiment_run
+                save_experiment_run(self.server.dataset_name, experiment_record, self.server.base_dir)
+
+                self.send_response(200)
+                self.send_header("Content-type", "application/json; charset=utf-8")
+                self.end_headers()
+                self.wfile.write(json.dumps(experiment_record, cls=RobustEncoder).encode("utf-8"))
+                
+            except Exception as e:
+                self.send_response(500)
+                self.send_header("Content-type", "application/json")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode("utf-8"))
 
 def find_free_port() -> int:
     """Finds an open ephemeral port on the host machine."""
